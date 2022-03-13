@@ -1,6 +1,5 @@
 # Adapted from: https://github.com/google-research/augmix/blob/master/augmentations.py
-# Added reduced set of primitives for second consistency loss.
-#
+# 
 # Last updated: Oct 17 2021
 """Base augmentations operators."""
 
@@ -128,11 +127,6 @@ def sharpness(pil_img, level, IMAGE_SIZE):
     level = float_parameter(sample_level(level), 1.8) + 0.1
     return ImageEnhance.Sharpness(pil_img).enhance(level)
 
-
-# Mix operations
-augmentations_mix = [
-    autocontrast, equalize, posterize, solarize
-]
 
 # AugMix operations
 augmentations = [
