@@ -1,6 +1,6 @@
-# Diverse Gaussian Noise Consistency Regularization for Robustness and Uncertainty Calibration under Noise Domain Shifts
+# Diverse Gaussian Noise Consistency Regularization for Robustness and Uncertainty Calibration
 
-Preprint: https://arxiv.org/abs/2104.01231
+arXiv preprint: https://arxiv.org/abs/2104.01231
 
 ## Method Description
 ![](images/DiGN_concept.png)
@@ -29,12 +29,13 @@ To train CIFAR-10 ResNet-18 model using DiGN training, batch size 512:
 python train.py cifar10 resnet18 512 dign_gn
 ```
 
-Other baselines are available in 'train.py', including:
+Other baselines are available in `train.py`, including:
 - AT
 - TRADES
 - RSE
 - DeepAugment
 - AugMix
+- AugMax
 - DiGN w.o. CR
 
 
@@ -45,7 +46,7 @@ To evaluate robustness under corruptions for a CIFAR-10 ResNet-18 model:
 python test-rob-c.py cifar10 resnet18 512 [Boolean_test_time_ensemble] [model_name] [Boolean_noise_only_eval]
 ```
 
-To evaluate a model only on digital noise corruptions (mCA-N), assuming the model in 'models' directory saved as 'RN18_cifar10_DIGN_model_X', use:
+To evaluate a model only on digital noise corruptions (mCA-N), assuming the model in `models` directory saved as 'RN18_cifar10_DIGN_model_X', use:
 
 ```
 python test-rob-c.py cifar10 resnet18 512 False DIGN_model_X True
@@ -64,7 +65,7 @@ To evaluate uncertainty calibration under corruptions for a CIFAR-10 ResNet-18 m
 python test-cal-c.py cifar10 resnet18 512 [Boolean_test_time_ensemble] [model_name] [Boolean_noise_only_eval]
 ```
 
-To evaluate a model only on digital noise corruptions (RMSE-N), assuming the model in 'models' directory saved as 'RN18_cifar10_DIGN_model_X', use:
+To evaluate a model only on digital noise corruptions (RMSE-N), assuming the model in `models` directory saved as 'RN18_cifar10_DIGN_model_X', use:
 
 ```
 python test-cal-c.py cifar10 resnet18 512 False DIGN_model_X True
