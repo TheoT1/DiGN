@@ -1,10 +1,9 @@
 # Training script for multiple independent runs, datasets, architectures
 #
-# Last updated: Dec 30 2021
+# Last updated: May 6 2022
 
 import sys
 from DataLoad import *
-
 from DiGN import DiGN
 
 args = sys.argv[1:]
@@ -34,7 +33,7 @@ elif dataset=='imagenette':
     data_path = './Imagenette'
     n_classes = 10
     get_loaders = get_loaders_imagenette
-    wd = 20e-4
+    wd = 30e-4
 else:
     raise ValueError('dataset not supported.')
     
@@ -73,8 +72,8 @@ if train_alg=='standard':
         dign.train(train_loader, val_loader, n_epochs=Nepochs, eval_freq=Neval,
                      mode=mode,
                      weight_decay=wd,
-                     model_path='./models/'+arch+'_'+dataset+'_Standard_run'+str(m+1)+'_chkpt_',
-                     log_dir='./logs/'+arch+'_'+dataset+'_Standard_run'+str(m+1)+'_')
+                     model_path='./models/'+arch+'_'+dataset+'_Standard_wd100e4_run'+str(m+1)+'_chkpt_',
+                     log_dir='./logs/'+arch+'_'+dataset+'_Standard_wd100e4_run'+str(m+1)+'_')
 elif train_alg=='adversarial_training':
     mode = 'adv'
     for m in range(M):
@@ -84,8 +83,8 @@ elif train_alg=='adversarial_training':
                      weight_decay=wd,
 #                      epsilon=4/255, K=7, alpha=2.5*(4/255)/7,
                      epsilon=8/255, K=7, alpha=2.5*(8/255)/7,
-                     model_path='./models/'+arch+'_'+dataset+'_AT_run'+str(m+1)+'_chkpt_',
-                     log_dir='./logs/'+arch+'_'+dataset+'_AT_run'+str(m+1)+'_')
+                     model_path='./models/'+arch+'_'+dataset+'_AT_N3_run'+str(m+1)+'_chkpt_',
+                     log_dir='./logs/'+arch+'_'+dataset+'_AT_N3_run'+str(m+1)+'_')               
 elif train_alg=='trades':
     mode = 'trades'
     for m in range(M):
@@ -95,8 +94,8 @@ elif train_alg=='trades':
                      weight_decay=wd,
 #                      epsilon=4/255, K=7, alpha=2.5*(4/255)/7,
                      epsilon=8/255, K=7, alpha=2.5*(8/255)/7,
-                     model_path='./models/'+arch+'_'+dataset+'_Trades_run'+str(m+1)+'_chkpt_',
-                     log_dir='./logs/'+arch+'_'+dataset+'_Trades_run'+str(m+1)+'_')
+                     model_path='./models/'+arch+'_'+dataset+'_Trades_N3_run'+str(m+1)+'_chkpt_',
+                     log_dir='./logs/'+arch+'_'+dataset+'_Trades_N3_run'+str(m+1)+'_')
 elif train_alg=='random_self_ensemble':
     mode = 'rse'
     for m in range(M):
@@ -104,10 +103,12 @@ elif train_alg=='random_self_ensemble':
         dign.train(train_loader, val_loader, n_epochs=Nepochs, eval_freq=Neval,
                      mode=mode,
                      weight_decay=wd,
-                     stddev=0.1, # CIFAR10/100
-                     # stddev=0.3, # Tiny-ImageNet
-                     model_path='./models/'+arch+'_'+dataset+'_RSE_run'+str(m+1)+'_chkpt_',
-                     log_dir='./logs/'+arch+'_'+dataset+'_RSE_run'+str(m+1)+'_')
+#                      stddev=0.1, # CIFAR10/100
+                     stddev=0.3, # Tiny-ImageNet
+#                      model_path='./models/'+arch+'_'+dataset+'_RSE_N3_std0p1_run'+str(m+1)+'_chkpt_',
+#                      log_dir='./logs/'+arch+'_'+dataset+'_RSE_N3_std0p1_run'+str(m+1)+'_')
+                     model_path='./models/'+arch+'_'+dataset+'_RSE_N3_std0p3_run'+str(m+1)+'_chkpt_',
+                     log_dir='./logs/'+arch+'_'+dataset+'_RSE_N3_std0p3_run'+str(m+1)+'_')
 elif train_alg=='augmix':
     mode = 'AugMix'
     for m in range(M):
@@ -116,8 +117,20 @@ elif train_alg=='augmix':
                      mode=mode,
                      weight_decay=wd,
                      lam1=12,
-                     model_path='./models/'+arch+'_'+dataset+'_AugMix_run'+str(m+1)+'_chkpt_',
-                     log_dir='./logs/'+arch+'_'+dataset+'_AugMix_run'+str(m+1)+'_')
+#                      model_path='./models/'+arch+'_'+dataset+'_AugMix_N_run'+str(m+1)+'_chkpt_',
+#                      log_dir='./logs/'+arch+'_'+dataset+'_AugMix_N_run'+str(m+1)+'_')    
+                     model_path='./models/'+arch+'_'+dataset+'_AugMix_N3_run'+str(m+1)+'_chkpt_',
+                     log_dir='./logs/'+arch+'_'+dataset+'_AugMix_N3_run'+str(m+1)+'_')
+elif train_alg=='augmax':
+    mode = 'AugMax'
+    for m in range(M):
+        dign = DiGN(architecture, n_classes=n_classes, dataset=dataset)
+        dign.train(train_loader, val_loader, n_epochs=Nepochs, eval_freq=Neval,
+                     mode=mode,
+                     weight_decay=wd,
+                     lam1=12,
+                     model_path='./models/'+arch+'_'+dataset+'_AugMax_N3_run'+str(m+1)+'_chkpt_',
+                     log_dir='./logs/'+arch+'_'+dataset+'_AugMax_N3_run'+str(m+1)+'_')
 elif train_alg=='gaussian_noise':
     mode = 'GN'
     for m in range(M):
@@ -127,12 +140,17 @@ elif train_alg=='gaussian_noise':
                      mode=mode,
                      lam1=0,
                      lam2=0,
-                     stddev=0.2, random_std=True,
-                     # stddev=0.6, random_std=True,
-                     model_path='./models/'+arch+'_'+dataset+'_GN_run'+str(m+1)+'_chkpt_',
-                     log_dir='./logs/'+arch+'_'+dataset+'_GN_run'+str(m+1)+'_')
+#                      stddev=0.2, random_std=True,
+                     stddev=0.6, random_std=True,
+#                      model_path='./models/'+arch+'_'+dataset+'_GN_N3_std0p2_run'+str(m+1)+'_chkpt_',
+#                      log_dir='./logs/'+arch+'_'+dataset+'_GN_N3_std0p2_run'+str(m+1)+'_')
+                     model_path='./models/'+arch+'_'+dataset+'_GN_N3_std0p6_run'+str(m+1)+'_chkpt_',
+                     log_dir='./logs/'+arch+'_'+dataset+'_GN_N3_std0p6_run'+str(m+1)+'_')
 elif train_alg=='dign':
     mode = 'DiGN'
+    
+    mname = 'DIGN_N3_0p2_12_n3_std0p6_rand'
+    
     for m in range(M):
         dign = DiGN(architecture, n_classes=n_classes, dataset=dataset)
         dign.train(train_loader, val_loader, n_epochs=Nepochs, eval_freq=Neval,
@@ -140,41 +158,52 @@ elif train_alg=='dign':
                      weight_decay=wd,
                      lam1=0.2,    # GN regularization weight
                      lam2=12.0,    # AugMix weight
-                     stddev=0.2, random_std=True,  # Cifar-10/100
-#                      stddev=0.6, random_std=True,  # Tiny-ImageNet
+#                      stddev=0.2, random_std=True,  # Cifar-10/100
+                     stddev=0.6, random_std=True,  # Tiny-ImageNet
                      masking=False,
                      n_samples=3,                 # number of stochastic draws
-                     model_path='./models/'+arch+'_'+dataset+'_DiGN_run'+str(m+1)+'_chkpt_',
-                     log_dir='./logs/'+arch+'_'+dataset+'_DiGN_run'+str(m+1)+'_')
+                     model_path='./models/'+arch+'_'+dataset+'_'+mname+'_run'+str(m+1)+'_chkpt_',
+                     log_dir='./logs/'+arch+'_'+dataset+'_'+mname+'_run'+str(m+1)+'_')
 elif train_alg=='dign_gn':
     mode = 'DiGN'
-    mname = 'DiGN_model_X'
+
+    mname = 'DIGN_0p2_0_n3_std1p2_mask0p2_rand'
+
+    
     for m in range(M):
         dign = DiGN(architecture, n_classes=n_classes, dataset=dataset)
         dign.train(train_loader, val_loader, n_epochs=Nepochs, eval_freq=Neval,
                      mode=mode,
                      weight_decay=wd,
 #                      conf_adapt=False,
+                     use_KL=True,
                      lam1=0.2,    # GN weight
                      lam2=0,      # AugMix weight
-                     stddev=0.2, random_std=True,
-#                      probm=0.05, masking=True,
-                     masking=False,
+                     stddev=1.2, random_std=True,
+                     probm=0.20, masking=True,
+#                      masking=False,
                      n_samples=3,
                      model_path='./models/'+arch+'_'+dataset+'_'+mname+'_run'+str(m+1)+'_chkpt_',
                      log_dir='./logs/'+arch+'_'+dataset+'_'+mname+'_run'+str(m+1)+'_')
 elif train_alg=='deepaugment':
     mode = 'DeepAugment'
-    eps_max = 0.20
+    
+    mname = 'DeepAugment_N3_eps0p40_np2_ar0p75'
+    
+    eps_max = 0.40
+
     nplanes = 2
+    
     aug_ratio = 0.75
+    
     for m in range(M):
         dign = DiGN(architecture, n_classes=n_classes, dataset=dataset)
         dign.train(train_loader, val_loader, n_epochs=Nepochs, eval_freq=Neval,
                      mode=mode,
                      weight_decay=wd,
                      noisenet_max_eps=eps_max, nplanes=nplanes, aug_ratio=aug_ratio,
-                     model_path='./models/'+arch+'_'+dataset+'_DeepAugment_run'+str(m+1)+'_chkpt_',
-                     log_dir='./logs/'+arch+'_'+dataset+'_DeepAugment_run'+str(m+1)+'_')
+                     model_path='./models/'+arch+'_'+dataset+'_'+mname+'_run'+str(m+1)+'_chkpt_',
+                     log_dir='./logs/'+arch+'_'+dataset+'_'+mname+'_run'+str(m+1)+'_')
 else:
     raise ValueError('training algorithm not supported.')
+

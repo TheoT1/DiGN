@@ -1,15 +1,12 @@
 # Adapted from: https://github.com/google-research/augmix/blob/master/augmentations.py
-# 
+# Added reduced set of primitives for second consistency loss.
+#
 # Last updated: Oct 17 2021
 """Base augmentations operators."""
 
 import numpy as np
 from PIL import Image, ImageOps, ImageEnhance
 
-# # CIFAR-10/100
-# IMAGE_SIZE = 32
-# # Tiny-ImageNet
-# IMAGE_SIZE = 64
 
 def int_parameter(level, maxval):
     """Helper function to scale `val` between 0 and maxval .
@@ -127,6 +124,11 @@ def sharpness(pil_img, level, IMAGE_SIZE):
     level = float_parameter(sample_level(level), 1.8) + 0.1
     return ImageEnhance.Sharpness(pil_img).enhance(level)
 
+
+# Mix operations
+augmentations_mix = [
+    autocontrast, equalize, posterize, solarize
+]
 
 # AugMix operations
 augmentations = [

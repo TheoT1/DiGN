@@ -84,7 +84,8 @@ def eval_corruptions_cifar(corruption_level, corruption_path_base):
 
     labels = np.load(corruption_path_base+'labels.npy')
     if eval_noise:
-        corruption_list=['gaussian_noise','speckle_noise','impulse_noise','shot_noise']        
+        # corruption_list=['gaussian_noise','speckle_noise','impulse_noise','shot_noise']
+        corruption_list=['speckle_noise','impulse_noise','shot_noise']
     else:
         corruption_list=['saturate','spatter','gaussian_blur','speckle_noise','jpeg_compression','pixelate','elastic_transform','contrast','brightness','fog','frost','snow','zoom_blur','motion_blur','glass_blur','defocus_blur','impulse_noise','shot_noise'] #,'gaussian_noise']
     corruption_list.sort()
@@ -115,7 +116,8 @@ def eval_corruptions_tinyimagenet(corruption_level, corruption_path_base):
 
     # 14 corruptions
     if eval_noise:
-        corruption_list=['gaussian_noise','impulse_noise','shot_noise']        
+        # corruption_list=['gaussian_noise','impulse_noise','shot_noise']     
+        corruption_list=['impulse_noise','shot_noise']     
     else:
         corruption_list=['brightness','contrast','defocus_blur','elastic_transform','fog','frost','glass_blur','impulse_noise','jpeg_compression','motion_blur','pixelate','shot_noise','snow','zoom_blur'] #,'gaussian_noise']
     corruption_list.sort()
@@ -142,7 +144,8 @@ def eval_corruptions_imagenette(corruption_level, corruption_path_base):
 
     # 18 corruptions
     if eval_noise:
-        corruption_list=['gaussian_noise','speckle_noise','impulse_noise','shot_noise']        
+        # corruption_list=['gaussian_noise','speckle_noise','impulse_noise','shot_noise']    
+        corruption_list=['speckle_noise','impulse_noise','shot_noise']
     else:
         corruption_list=['brightness','contrast','defocus_blur','elastic_transform','fog','frost','gaussian_blur','glass_blur','impulse_noise','jpeg_compression','motion_blur','pixelate','saturate','shot_noise','snow','spatter','speckle_noise','zoom_blur'] #,'gaussian_noise']
     corruption_list.sort()

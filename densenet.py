@@ -4,7 +4,6 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-# from custom_modules import FakeReLU
 
 class FakeReLU(torch.autograd.Function):
     @staticmethod

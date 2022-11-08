@@ -18,7 +18,7 @@ TEST_TRANSFORMS_DEFAULT = lambda size:transforms.Compose([
         transforms.CenterCrop(size),
         transforms.ToTensor()
     ])
-
+    
 # Special transforms for ImageNet(s)
 TRAIN_TRANSFORMS_IMAGENET = transforms.Compose([
         transforms.RandomResizedCrop(224),
@@ -28,24 +28,14 @@ TRAIN_TRANSFORMS_IMAGENET = transforms.Compose([
             contrast=0.1,
             saturation=0.1
         ),
-        transforms.ToTensor()
+        transforms.ToTensor(),
     ])
-"""
-Standard training data augmentation for ImageNet-scale datasets: Random crop,
-Random flip, Color Jitter, and Lighting Transform (see https://git.io/fhBOc)
-"""
 
 TEST_TRANSFORMS_IMAGENET = transforms.Compose([
         transforms.Resize(256),
         transforms.CenterCrop(224),
         transforms.ToTensor(),
     ])
-"""
-Standard test data processing (no augmentation) for ImageNet-scale datasets,
-Resized to 256x256 then center cropped to 224x224.
-"""
-
-
     
 def get_loader_from_path(path, batch_size=128, num_workers=4, d_input=64):
     """ Returns data loader for given path """
@@ -97,10 +87,3 @@ def get_loader_from_numpy(x,y,batch_size=128, num_workers=4):
     my_dataset    = torch.utils.data.TensorDataset(tensor_x,tensor_y) # create your dataset
     my_dataloader = torch.utils.data.DataLoader(my_dataset,batch_size=batch_size, num_workers=num_workers, shuffle=False) # create your dataloader
     return my_dataloader
-
-
-
-    
-
-    
-

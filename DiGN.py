@@ -1,6 +1,6 @@
 # DiGN module
 # 
-# Last updated: Dec 29 2021
+# Last updated: July 27 2022
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -9,12 +9,14 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
+from torchvision import transforms
 
 from resnet import ResNet18, ResNet18Wide, ResNet18_64, ResNet18Wide_64
 from densenet import DenseNet121
 from imagenet_models.resnet import ResNet50
 from noise2net import Res2Net
-from augment_and_mix import augment_and_mix
+from augment_and_mix import augment_and_mix, augment
+from augmax import AugMaxModule
 
 import datetime
 from tqdm import tqdm
@@ -23,7 +25,7 @@ from torch.distributions.uniform import Uniform
 from torch.distributions.exponential import Exponential
 
 # list of methods that employ regularization
-list_reg = ['GN', 'DiGN', 'trades', 'AugMix']
+list_reg = ['GN', 'DiGN', 'trades', 'AugMix', 'AugMax']
 
 class DiGN:
     def __init__(self, arch='resnet18', n_classes=10, dataset='cifar10'):
@@ -58,7 +60,7 @@ class DiGN:
         else:
             raise ValueError('dataset not supported.')
         self.loss_fn = nn.CrossEntropyLoss()
-
+        
     def train(self, train_loader, val_loader, n_epochs, eval_freq=5,
               learning_rate=0.1, weight_decay=5e-4, momentum=0.9, ep_decay=50, gamma=0.1,
               adv_norm='Linf', epsilon=8/255, K=7, alpha=2.5 * (8/255)/ 7,
@@ -66,11 +68,12 @@ class DiGN:
               lam_rate=0.1, random_exp=False,      # Exp
               n_samples=2,                         # number of stochastic samples
               alpha_coef=1.0, lam1=3.0, lam2=3.0,
+              use_KL=True,                         # use KL or JS regularization
               conf_adapt=False,                    # confidence weighting adaptation
               masking=False, probm=0.2,            # Bernoulli masking
               noisenet_max_eps=0.10,               # eps value for Noise2Net
-              nplanes=16,                          # hidden planes in Noise2Net architecture
-              aug_ratio=0.75,                      # DeepAugment augmentation/clean batch ratio
+              nplanes=2,                           # hidden planes in Noise2Net architecture
+              aug_ratio=1.0,                       # augmentation/clean batch ratio
               mode='standard', model_path='./models/checkpoint_', log_dir='./logs/final_'):
         print('Training mode:', mode)
         self.model.train()
@@ -86,8 +89,12 @@ class DiGN:
                               nesterov=True)
         scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=ep_decay, gamma=gamma)
 
+        if mode=='AugMax':
+            augmax_model = AugMaxModule()
+        
         acc_eval_best = 0.0
         for epoch in range(n_epochs):
+            self.model.train()
             loss_train = 0.0
             
             if mode=='DeepAugment':
@@ -111,49 +118,91 @@ class DiGN:
                     
                     reg = 0.0
                     
-                    if lam1>0:                    
-                        # gaussian noise consistency
-                        avgKL = 0.0
-                        for n in range(n_samples):
-                            # make copy of tensor x
-                            xc = x.clone().detach()
+                    if lam1>0:
+                        if use_KL:
+                            avgCR = 0.0
                             
-                            if random_std: # Uniform random variable sigma with max value stddev
-                                rn = torch.rand(batch_size)
-                                rn = rn.unsqueeze(dim=1)
-                                rn = rn.unsqueeze(dim=1)
-                                rn = rn.unsqueeze(dim=1)
-                                stdn = stddev*rn.to(device=self.device)
-                            elif random_exp: # Exponential random variable sigma with rate lam
-                                rn = m.sample(sample_shape=(batch_size,))
-                                rn = rn.unsqueeze(dim=1)
-                                rn = rn.unsqueeze(dim=1)
-                                stdn = rn.to(device=self.device)
-                            else: # fixed standard deviation sigma
-                                stdn = stddev
-                            
-                            if masking:
-                                u = torch.rand_like(xc)
-#                                 probs = torch.rand(batch_size)
-#                                 mask = torch.cat([(u[i].unsqueeze(dim=0)<probs[i])*1.0 for i in range(batch_size)])
-                                mask = (u < probm)*1.0
-                                mask = mask.to(device=self.device)
-                            else:
-                                mask = torch.ones_like(xc).to(device=self.device)
-                            rn = stdn * mask * torch.randn_like(xc).to(device=self.device)
+                            for n in range(n_samples):
+                                # make copy of tensor x
+                                xc = x.clone().detach()
+                                
+                                if random_std: # Uniform random variable sigma with max value stddev
+                                    rn = torch.rand(batch_size)
+                                    rn = rn.unsqueeze(dim=1)
+                                    rn = rn.unsqueeze(dim=1)
+                                    rn = rn.unsqueeze(dim=1)
+                                    stdn = stddev*rn.to(device=self.device)
+                                elif random_exp: # Exponential random variable sigma with rate lam
+                                    rn = m.sample(sample_shape=(batch_size,))
+                                    rn = rn.unsqueeze(dim=1)
+                                    rn = rn.unsqueeze(dim=1)
+                                    stdn = rn.to(device=self.device)
+                                else: # fixed standard deviation sigma
+                                    stdn = stddev
+                                
+                                if masking:
+                                    u = torch.rand_like(xc)
+                                    mask = (u < probm)*1.0
+                                    mask = mask.to(device=self.device)
+                                else:
+                                    mask = torch.ones_like(xc).to(device=self.device)
+                                rn = stdn * mask * torch.randn_like(xc).to(device=self.device)
 
-                            # add noise on top of clean x examples
-                            outputs_n = self.model_n(xc, rn)
-                            p_n = F.softmax(outputs_n, dim=1)
-                            KL_n = (p_orig * torch.log((p_orig + 1e-14) / (p_n + 1e-14))).sum(dim=1)
-                            avgKL += KL_n
-                        avgKL /= n_samples
+                                # add noise
+                                outputs_n = self.model_n(xc, rn)
+                                p_n = F.softmax(outputs_n, dim=1)
+
+                                KL_n = (p_orig * torch.log((p_orig + 1e-14) / (p_n + 1e-14))).sum(dim=1)
+                                
+                                avgCR += KL_n
+                            avgCR /= n_samples
+                        else: # use JS
+                            p_n_list = []
+                            for n in range(2):
+                                # make copy of tensor x
+                                xc = x.clone().detach()
+                                
+                                if random_std: # Uniform random variable sigma with max value stddev
+                                    rn = torch.rand(batch_size)
+                                    rn = rn.unsqueeze(dim=1)
+                                    rn = rn.unsqueeze(dim=1)
+                                    rn = rn.unsqueeze(dim=1)
+                                    stdn = stddev*rn.to(device=self.device)
+                                elif random_exp: # Exponential random variable sigma with rate lam
+                                    rn = m.sample(sample_shape=(batch_size,))
+                                    rn = rn.unsqueeze(dim=1)
+                                    rn = rn.unsqueeze(dim=1)
+                                    stdn = rn.to(device=self.device)
+                                else: # fixed standard deviation sigma
+                                    stdn = stddev
+                                
+                                if masking:
+                                    u = torch.rand_like(xc)
+                                    mask = (u < probm)*1.0
+                                    mask = mask.to(device=self.device)
+                                else:
+                                    mask = torch.ones_like(xc).to(device=self.device)
+                                rn = stdn * mask * torch.randn_like(xc).to(device=self.device)
+
+                                # add noise
+                                outputs_n = self.model_n(xc, rn)
+                                p_n = F.softmax(outputs_n, dim=1)
+                                p_n_list.append(p_n)
+                            
+                            p_n1, p_n2 = p_n_list[0], p_n_list[1]
+                            
+                            p_mix = (p_orig + p_n1 + p_n2)/3.0
+                            KL_orig = torch.sum( p_orig*torch.log( (p_orig+1e-14)/(p_mix + 1e-14) ), dim=1).mean()
+                            KL_n1  = torch.sum( p_n1*torch.log( (p_n1+1e-14)/(p_mix + 1e-14) ), dim=1).mean()
+                            KL_n2  = torch.sum( p_n2*torch.log( (p_n2+1e-14)/(p_mix + 1e-14) ), dim=1).mean()
+                            avgCR = (KL_orig + KL_n1 + KL_n2)/3.0
+
                         if conf_adapt:
                             tcp_orig = p_orig.gather(1, y.view(-1,1)).view(-1)
-                            wAvgKL   = (avgKL*tcp_orig).mean()
+                            wAvgCR   = (avgCR*tcp_orig).mean()
                         else:
-                            wAvgKL   = avgKL.mean()
-                        reg = lam1 * wAvgKL
+                            wAvgCR   = avgCR.mean()
+                        reg = lam1 * wAvgCR
    
                     if lam2>0:
                         # augmix
@@ -232,6 +281,30 @@ class DiGN:
                     KL_am2  = torch.sum( p_am2*torch.log( (p_am2+1e-14)/(p_mix + 1e-14) ), dim=1).mean()
                     JS = (KL_orig + KL_am1 + KL_am2)/3.0
                     reg = lam1*JS
+                elif mode == 'AugMax':
+                    # original
+                    outputs = self.model_n(x)
+                    p_orig = F.softmax(outputs, dim=1)
+
+                    # augmix 
+                    x_augmix = AugMix(x)
+                    outputs_augmix = self.model_n(x_augmix)
+                    p_augmix  = F.softmax(outputs_augmix, dim=1)
+
+                    # augmax
+                    x_augmax = self.AugMax(augmax_model, x, y)
+                    self.model.train()
+                    outputs_augmax = self.model_n(x_augmax)
+                    p_augmax  = F.softmax(outputs_augmax, dim=1)
+
+                    # Jensen-Shannon divergence
+                    p_mix     = (p_orig + p_augmix + p_augmax)/3.0
+                    KL_orig   = torch.sum( p_orig*torch.log( (p_orig+1e-14)/(p_mix + 1e-14) ), dim=1).mean()
+                    KL_augmix = torch.sum( p_augmix*torch.log( (p_augmix+1e-14)/(p_mix + 1e-14) ), dim=1).mean()
+                    KL_augmax = torch.sum( p_augmax*torch.log( (p_augmax+1e-14)/(p_mix + 1e-14) ), dim=1).mean()
+                    JS = (KL_orig + KL_augmix + KL_augmax)/3.0
+                    reg = lam1*JS
+                    
                 elif mode == 'trades':  # TRADES
                     d_adv = self.find_adv_input_KL(x, epsilon, K, alpha, adv_norm)
                     self.model.train()
@@ -268,13 +341,12 @@ class DiGN:
                         xc[:noise2net_batch_size] = x_auged
                     
                     xc = inv_normalize(xc, self.mean, self.std)
-#                     xc = torch.clamp(xc, 0, 1)
                     
                     outputs = self.model_n(xc)
                 elif mode == 'standard':  # standard
                     outputs = self.model_n(x)
                 else:
-                    raise NameError('Invalid mode')
+                    raise NameError('Invalid train mode')
 
                 loss = self.loss_fn(outputs, y)
                 if mode in list_reg:
@@ -362,6 +434,115 @@ class DiGN:
                 delta.data = (delta + alpha * delta.grad.detach().sign()).clamp(-epsilon, epsilon)
             delta.grad.zero_()
         return delta.detach()
+    
+    def get_grad(self, x, y):
+        """ Find gradient vector of loss function at x. """
+        self.model.eval()
+        delta = torch.zeros_like(x, requires_grad=True).to(device=self.device)
+        # forward pass
+        output = self.model_n(x + delta)
+        cost = self.loss_fn(output, y)
+        # backward pass
+        cost.backward()
+        grad = delta.grad.detach()
+        return grad
+    
+    def get_curv(self, x, y, n=5, epsn=1e-6):
+        """
+            Find curvature estimate of loss function at x using centered gradient difference.
+            No scaling of random directions.
+        """
+        self.model.eval()
+        for i in range(n):
+            delta_r = torch.randn_like(x).to(device=self.device)
+            delta_r /= norms(delta_r.detach())
+            
+            delta = torch.zeros_like(x, requires_grad=True).to(device=self.device)
+            output_p = self.model_n(x + delta, +epsn*delta_r)
+            cost_p = self.loss_fn(output_p, y)
+            cost_p.backward()
+            grad_p = delta.grad.detach()
+            
+            delta = torch.zeros_like(x, requires_grad=True).to(device=self.device)
+            output_n = self.model_n(x + delta, -epsn*delta_r)
+            cost_n = self.loss_fn(output_n, y)
+            cost_n.backward()
+            grad_n = delta.grad.detach()
+            
+            curv = norms(grad_p-grad_n)**2/(2*epsn)
+            if i==0:
+                curv_avg = curv
+            else:
+                curv_avg += curv
+        curv_avg /= n
+        return curv_avg
+    
+    
+    def augmax_attack(self, augmax_model, xs, labels=None, targets=None, targeted=False, noisy=False, grad_noise_level=0.1, random_level=False, steps=10, alpha=0.1, device='cuda'):
+        '''
+        Args:
+            xs: Tensor tuple. (x_ori, x_aug1, x_aug2, x_aug3). size of x_ori=(N,C,W,H)
+            model: nn.Module. The model to be attacked.
+            labels: Tensor. ground truth labels for x. size=(N,). Useful only under untargeted attack.
+            targets: Tensor. target attack class for x. size=(N,). Useful only under targeted attack.
+            noisy: bool. Whether 
+            random_level: bool. Whether 
+        Return:
+            x_adv: Tensor. Adversarial images. size=(N,C,W,H)
+        '''
+        self.model.eval()
+
+        mixture_width = len(xs) - 1
+        N = xs[0].size()[0] # batch size
+        
+        # initialize m_adv
+        m_adv = torch.rand(N).to(device) # random initialize in [0,1)
+        m_adv = torch.clamp(m_adv, 0, 1) # clamp to range [0,1)
+        m_adv.requires_grad=True
+
+        # initialize ws_adv
+        q_adv = torch.rand((N,mixture_width), requires_grad=True).to(device) # random initialize
+
+        # initialize x_adv
+        x_adv = augmax_model(xs, m_adv, q_adv)
+
+        # attack step size
+        if random_level:
+            alpha = alpha * np.random.choice([1,0.5,0.2,0.1])
+        
+        for t in range(steps):
+            logits_adv = self.model_n(x_adv)
+            if targeted:
+                loss_adv = - self.loss_fn(logits_adv, targets)
+            else: # untargeted attack
+                loss_adv = self.loss_fn(logits_adv, labels)
+            # grad
+            grad_m_adv, grad_q_adv = torch.autograd.grad(loss_adv, [m_adv, q_adv], only_inputs=True)
+            # update m
+            m_adv.data.add_(alpha * torch.sign(grad_m_adv.data)) # gradient assend by Sign-SGD
+            if noisy:
+                m_adv.data.add_(grad_noise_level * alpha * torch.rand(grad_m_adv.data.size()).to(device))
+            m_adv = torch.clamp(m_adv, 0, 1) # clamp to RGB range [0,1]
+            # update w1
+            q_adv.data.add_(alpha * torch.sign(grad_q_adv.data)) # gradient assend by Sign-SGD
+            if noisy:
+                q_adv.data.add_(grad_noise_level * alpha * torch.rand(grad_q_adv.data.size()).to(device))
+            # update x_adv
+            x_adv = augmax_model(xs, m_adv, q_adv)
+
+        return x_adv, m_adv, q_adv
+    
+    def AugMax(self, augmax_model, x, y):
+        # compute list of augmentations
+        x_augs = genAugs(x)
+        
+        # append with original images into tuple
+        xs = (x, x_augs[0].cuda(), x_augs[1].cuda(), x_augs[2].cuda())
+        
+        # compute augmax worst-case augmentations
+        x_augmax,_,_ = self.augmax_attack(augmax_model, xs, labels=y)
+        
+        return x_augmax
 
     def evaluate(self, val_loader, ensemble=False, stddev=0.01, N=10, adv=False, epsilon=8/255.0, adv_norm='Linf', K=7):
         self.model.eval()
@@ -398,6 +579,17 @@ class DiGN:
         acc = correct / total
         print(' Val acc = %.3f  Val loss %.5f' % (acc * 100.0, loss_eval / len(val_loader)))
         return acc, loss_eval / len(val_loader)
+    
+    def gradients(self, val_loader):
+        self.model.eval()
+        grad_norms = []
+        for x, y in tqdm(val_loader):
+            batch_size = x.shape[0]
+            x = x.to(device=self.device)
+            y = y.to(device=self.device)
+            grad = self.get_grad(x, y)
+            grad_norms.append(np.array(norms(grad).cpu()))
+        return grad_norms
     
     def predict(self, val_loader, ensemble=False, stddev=0.01, N=10, adv=False, epsilon=8/255.0, K=7, n_classes=10):
         self.model.eval()
@@ -461,20 +653,40 @@ class DiGN:
         plt.grid()
         plt.show()
 
-# Helper functions
+        
+# ---- Helper functions ---- 
 def AugMix(x, width=3, depth=-1, alpha=1.0):
     """ Augmix data creation, multiple mixing chains each with varying number of primitive operations applied
         Inputs:
             x = batch_size x 3 x 32 x 32
     """
-    n=x.shape[0]
+    n = x.shape[0]
     x_augmix = torch.zeros_like(x).cpu()
     for i in range(n):
-        x_numpy_version = x[i].cpu().numpy()
-        severity = np.random.randint(1,11)
-        x_augmix_temp = augment_and_mix(x_numpy_version.transpose(1,2,0), severity=severity, width=width, depth=depth, alpha=alpha)
-        x_augmix[i] = torch.from_numpy(x_augmix_temp.transpose(2,0,1))
+        x_np          = x[i].cpu().numpy()
+        severity      = np.random.randint(1,11)
+        x_augmix_temp = augment_and_mix(x_np.transpose(1,2,0), severity=severity, width=width, depth=depth, alpha=alpha)
+        x_augmix[i]   = torch.from_numpy(x_augmix_temp.transpose(2,0,1))
     return x_augmix.cuda()
+
+def genAugs(x, width=3, depth=-1):
+    """ Augmix data creation, multiple mixing chains each with varying number of primitive operations applied
+        Inputs:
+            x = batch_size x 3 x 32 x 32
+    """
+    n = x.shape[0]
+    # init list of Tensors [(B,C,H,W),(B,C,H,W),(B,C,H,W)]
+    x_augs = []
+    for j in range(width):
+        x_augs.append(torch.zeros_like(x).cpu())
+    #x_augs = [torch.zeros_like(x).cpu(),torch.zeros_like(x).cpu(),torch.zeros_like(x).cpu()]
+    for i in range(n):
+        x_np        = x[i].cpu().numpy()
+        severity    = np.random.randint(1,11)
+        x_aug_list  = augment(x_np.transpose(1,2,0), severity=severity, width=width)
+        for j in range(width):
+            x_augs[j][i] = torch.from_numpy(x_aug_list[j].transpose(2,0,1)).cuda() # (C,H,W)
+    return x_augs
 
 
 def normalize(tensor, mean, std):
