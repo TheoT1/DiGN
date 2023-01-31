@@ -1,11 +1,5 @@
 # Diverse Gaussian Noise Consistency Regularization for Robustness and Uncertainty Calibration
 
-arXiv preprint: https://arxiv.org/abs/2104.01231
-
-## Method Description
-![](images/DiGN_concept.png)
-During training, input images x are fed into n independent branches each associated with a new augmented sample. Each branch adds Gaussian noise to clean images controlled by a variety of scales sampled from a uniform distribution, and a consistency loss with respect to the clean images is formed. Our DiGN training procedure trains a network with this type of diverse consistency regularization.
-
 ## Directories
 - models: contains saved model checkpoints
 - results: contains .pkl files generated from testing
