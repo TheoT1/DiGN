@@ -1,5 +1,11 @@
 # Diverse Gaussian Noise Consistency Regularization for Robustness and Uncertainty Calibration
 
+GitHub repo for IJCNN 2023 paper
+
+[[pdf]](https://ieeexplore.ieee.org/document/10191763)
+[[arxiv]](https://arxiv.org/abs/2104.01231)
+
+
 ## Directories
 - models: contains saved model checkpoints
 - results: contains .pkl files generated from testing
@@ -70,3 +76,14 @@ and for evaluating on all common corruptions (RMSE), use instead:
 ```
 python test-cal-c.py cifar10 resnet18 512 False DIGN_model_X False
 ```
+
+## Citation
+For citing this paper or code, please use the following:
+
+> @inproceedings{DiGN,\
+    &nbsp;&nbsp;title={Diverse Gaussian Noise Consistency Regularization for Robustness and Uncertainty Calibration},\
+    &nbsp;&nbsp;author={Theodoros Tsiligkaridis and Athanasios Tsiligkaridis},\
+    &nbsp;&nbsp;booktitle={Proceedings of the International Joint Conference on Neural Networks, IJCNN},\
+    &nbsp;&nbsp;month={June},\
+    &nbsp;&nbsp;year={2023}\
+}
